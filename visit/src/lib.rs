@@ -1,3 +1,5 @@
+#![recursion_limit = "128"]
+
 extern crate proc_macro;
 
 use quote::quote;
@@ -21,6 +23,8 @@ pub fn visit(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let accept_trait_ident = codegen::accept_visitor_trait_ident(&visitor_trait_ident);
     let accept_trait_gen =
         codegen::generate_accept_visitor_trait(&visitor_trait_ident, &accept_trait_ident);
+    let accept_trait_impls =
+        codegen::generate_accept_visitor_impls(&visitor_trait_ident, &accept_trait_ident);
 
     let mut accept_impls = proc_macro2::TokenStream::new();
     for item_struct in visitor.structs {
@@ -44,6 +48,7 @@ pub fn visit(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         #file
         #visitor_trait_gen
         #accept_trait_gen
+        #accept_trait_impls
         #accept_impls
     };
     result.into()

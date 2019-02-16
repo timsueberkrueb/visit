@@ -3,4 +3,6 @@ members = [
     "visit",
     "tests/simple",
     "tests/enums",
+    "tests/iterators",
+    "tests/primitive",
 ]

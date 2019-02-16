@@ -48,6 +48,83 @@ pub fn generate_accept_visitor_trait(
     }
 }
 
+pub fn generate_accept_visitor_impls(
+    visitor_trait_ident: &syn::Ident,
+    accept_trait_ident: &syn::Ident,
+) -> proc_macro2::TokenStream {
+    macro_rules! impl_empty_accept {
+        ($t:ty) => {
+            quote! {
+                impl #accept_trait_ident for $t {
+                    fn accept<V: #visitor_trait_ident>(&self, _visitor: &mut V) {}
+                }
+            }
+        };
+    }
+
+    let mut stream = quote! {
+        impl<TItem> #accept_trait_ident for [TItem]
+        where
+            TItem: #accept_trait_ident
+        {
+            fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
+                for item in self.iter().by_ref() {
+                    item.accept(visitor);
+                }
+            }
+        }
+
+        impl<TItem> #accept_trait_ident for Vec<TItem>
+        where
+            TItem: #accept_trait_ident
+        {
+            fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
+                for item in self.iter().by_ref() {
+                    item.accept(visitor);
+                }
+            }
+        }
+
+        impl<TItem> #accept_trait_ident for std::collections::HashSet<TItem>
+        where
+            TItem: #accept_trait_ident + Eq + std::hash::Hash,
+        {
+            fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
+                for item in self.iter().by_ref() {
+                    item.accept(visitor);
+                }
+            }
+        }
+    };
+
+    // Ignore primitive datatypes by providing empty AcceptVisitor implementations
+
+    stream.extend(impl_empty_accept!(u8));
+    stream.extend(impl_empty_accept!(u16));
+    stream.extend(impl_empty_accept!(u32));
+    stream.extend(impl_empty_accept!(u64));
+    stream.extend(impl_empty_accept!(u128));
+
+    stream.extend(impl_empty_accept!(i8));
+    stream.extend(impl_empty_accept!(i16));
+    stream.extend(impl_empty_accept!(i32));
+    stream.extend(impl_empty_accept!(i64));
+    stream.extend(impl_empty_accept!(i128));
+
+    stream.extend(impl_empty_accept!(usize));
+    stream.extend(impl_empty_accept!(isize));
+
+    stream.extend(impl_empty_accept!(f32));
+    stream.extend(impl_empty_accept!(f64));
+
+    stream.extend(impl_empty_accept!(bool));
+
+    stream.extend(impl_empty_accept!(String));
+    stream.extend(impl_empty_accept!(&str));
+
+    stream
+}
+
 pub fn generate_accept_impl_for_struct(
     visitor_trait_ident: &syn::Ident,
     accept_trait_ident: &syn::Ident,
