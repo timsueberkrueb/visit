@@ -1,0 +1,107 @@
+#![cfg(test)]
+
+use visit::visit;
+
+visit! {
+    #![visitor_trait = "Visitor"]
+
+    struct GenericTest<A, B>
+    where
+        A: Copy + AcceptVisitor,
+        B: Default + AcceptVisitor,
+    {
+        foo: A,
+        bar: B,
+    }
+
+    enum GenericEnum<A, B>
+    where
+        A: Copy + AcceptVisitor,
+        B: Default + AcceptVisitor,
+    {
+        Foo { a: A },
+        Bar { b: B },
+    }
+
+    struct LifetimeTest<'a> {
+        s: &'a str,
+    }
+}
+
+struct MyVisitor {
+    visited_generic_test: bool,
+    visited_lifetime_test: bool,
+    visited_generic_enum: bool,
+}
+
+impl MyVisitor {
+    fn new() -> Self {
+        Self {
+            visited_generic_test: false,
+            visited_lifetime_test: false,
+            visited_generic_enum: false,
+        }
+    }
+}
+
+impl Visitor for MyVisitor {
+    fn visit_generic_test<A, B>(&mut self, _test: &GenericTest<A, B>)
+    where
+        A: Copy + AcceptVisitor,
+        B: Default + AcceptVisitor,
+    {
+        self.visited_generic_test = true;
+    }
+
+    fn visit_generic_enum<A, B>(&mut self, _test: &GenericEnum<A, B>)
+    where
+        A: Copy + AcceptVisitor,
+        B: Default + AcceptVisitor,
+    {
+        self.visited_generic_enum = true;
+    }
+
+    fn visit_lifetime_test<'a>(&mut self, _test: &LifetimeTest<'a>) {
+        self.visited_lifetime_test = true;
+    }
+}
+
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generic_struct_simple() {
+        let test = GenericTest {
+            foo: 0usize,
+            bar: String::new(),
+        };
+        let mut v = MyVisitor::new();
+        test.accept(&mut v);
+        assert!(v.visited_generic_test);
+    }
+
+    #[test]
+    fn test_generic_enum_simple_a() {
+        let test: GenericEnum<usize, String> = GenericEnum::Foo { a: 0usize };
+        let mut v = MyVisitor::new();
+        test.accept(&mut v);
+        assert!(v.visited_generic_enum);
+    }
+
+    #[test]
+    fn test_generic_enum_simple_b() {
+        let test: GenericEnum<usize, String> = GenericEnum::Bar { b: String::new() };
+        let mut v = MyVisitor::new();
+        test.accept(&mut v);
+        assert!(v.visited_generic_enum);
+    }
+
+    #[test]
+    fn test_lifetime_simple() {
+        let test_string = "Borrow me!".to_owned();
+        let test = LifetimeTest { s: &test_string };
+        let mut v = MyVisitor::new();
+        test.accept(&mut v);
+        assert!(v.visited_lifetime_test);
+    }
+}

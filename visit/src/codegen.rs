@@ -1,40 +1,65 @@
 use case::CaseExt;
 use quote::quote;
 
-use crate::iter_utils::Unzip3;
-
 pub fn generate_visitor_trait(
     visitor_trait_ident: &syn::Ident,
     structs: &[&syn::ItemStruct],
     enums: &[&syn::ItemEnum],
 ) -> proc_macro2::TokenStream {
-    let struct_idents: Vec<_> = structs.iter().by_ref().map(|s| &s.ident).collect();
-
-    let enum_idents: Vec<_> = enums.iter().by_ref().map(|e| &e.ident).collect();
-
-    let (idents, visit_fn_idents, param_idents): (
-        Vec<&proc_macro2::Ident>,
-        Vec<proc_macro2::Ident>,
-        Vec<proc_macro2::Ident>,
-    ) = struct_idents
+    let items: Vec<_> = structs
         .iter()
-        .chain(enum_idents.iter())
         .by_ref()
-        .map(|ident| {
-            let visit_fn_ident = visitor_item_fn_ident(&ident);
-            let param_string = format!("_{}", ident.to_string().to_snake());
-            let param_ident = syn::Ident::new(&param_string, proc_macro2::Span::call_site());
-            (ident, visit_fn_ident, param_ident)
+        .map(|s| GenericItem {
+            ident: &s.ident,
+            generics: &s.generics,
         })
-        .unzip_3();
+        .chain(enums.iter().by_ref().map(|e| GenericItem {
+            ident: &e.ident,
+            generics: &e.generics,
+        }))
+        .collect();
+
+    let mut idents = Vec::new();
+    let mut visit_fn_idents = Vec::new();
+    let mut param_idents = Vec::new();
+    let mut param_generics = Vec::new();
+    let mut param_where_clauses = Vec::new();
+
+    for item in items {
+        let visit_fn_ident = visitor_item_fn_ident(&item.ident);
+        let param_string = format!("_{}", item.ident.to_string().to_snake());
+        let param_ident = syn::Ident::new(&param_string, proc_macro2::Span::call_site());
+        let param_generics_stream = if item.generics.params.is_empty() {
+            quote! {}
+        } else {
+            let generic_params = &item.generics.params;
+            quote! { <#generic_params> }
+        };
+        let item_ident = &item.ident;
+        idents.push(quote! { #item_ident });
+        visit_fn_idents.push(visit_fn_ident);
+        param_idents.push(param_ident);
+        param_generics.push(param_generics_stream);
+        param_where_clauses.push(&item.generics.where_clause);
+    }
+
+    let param_generics_2 = param_generics.clone();
 
     quote! {
         trait #visitor_trait_ident {
             #(
-                fn #visit_fn_idents(&mut self, #param_idents: &#idents) {}
+                fn #visit_fn_idents #param_generics (&mut self, #param_idents: &#idents #param_generics_2)
+                #param_where_clauses
+                {}
             )*
         }
     }
+}
+
+/// Helper struct to represent either a struct or an enum item
+struct GenericItem<'a> {
+    ident: &'a syn::Ident,
+    generics: &'a syn::Generics,
 }
 
 pub fn generate_accept_visitor_trait(
@@ -130,13 +155,23 @@ pub fn generate_accept_impl_for_struct(
     accept_trait_ident: &syn::Ident,
     item_struct: &syn::ItemStruct,
 ) -> proc_macro2::TokenStream {
+    let generics_params = &item_struct.generics.params;
+    let generics_params = if generics_params.is_empty() {
+        quote! {}
+    } else {
+        quote! { <#generics_params> }
+    };
+    let generics_where_clause = &item_struct.generics.where_clause;
+
     let struct_ident = &item_struct.ident;
     let fn_ident = visitor_item_fn_ident(struct_ident);
 
     if let syn::Fields::Named(fields_named) = &item_struct.fields {
         let field_idents = fields_named.named.iter().map(|f| f.ident.clone().unwrap());
         quote! {
-            impl #accept_trait_ident for #struct_ident {
+            impl #generics_params #accept_trait_ident for #struct_ident #generics_params
+            #generics_where_clause
+            {
                 fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
                     #(
                         self.#field_idents.accept(visitor);
@@ -157,6 +192,13 @@ pub fn generate_accept_impl_for_enum(
 ) -> proc_macro2::TokenStream {
     let enum_ident = &item_enum.ident;
     let fn_ident = visitor_item_fn_ident(enum_ident);
+    let generics_params = &item_enum.generics.params;
+    let generics_params = if generics_params.is_empty() {
+        quote! {}
+    } else {
+        quote! { <#generics_params> }
+    };
+    let generics_where_clause = &item_enum.generics.where_clause;
 
     let mut match_body = proc_macro2::TokenStream::new();
 
@@ -184,7 +226,9 @@ pub fn generate_accept_impl_for_enum(
     }
 
     quote! {
-        impl #accept_trait_ident for #enum_ident {
+        impl #generics_params #accept_trait_ident for #enum_ident #generics_params
+        #generics_where_clause
+        {
             fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
                 match self {
                     #match_body

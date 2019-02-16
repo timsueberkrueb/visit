@@ -5,7 +5,6 @@ extern crate proc_macro;
 use quote::quote;
 
 mod codegen;
-mod iter_utils;
 mod parse;
 
 use syn::visit::Visit;

@@ -5,7 +5,7 @@ use visit::visit;
 visit! {
     #![visitor_trait = "Visitor"]
 
-    struct Primitives {
+    struct Primitives<'a> {
         test_u8: u8,
         test_u16: u16,
         test_u32: u32,
@@ -21,8 +21,7 @@ visit! {
         test_f32: f32,
         test_f64: f64,
         test_bool: bool,
-        // TODO: Support lifetime parameters
-        //test_str: &'a str,
+        test_str: &'a str,
         test_string: String,
         foo: Foo,
     }
@@ -69,7 +68,7 @@ mod test {
             test_f32: 0f32,
             test_f64: 0f64,
             test_bool: true,
-            //test_str: "test",
+            test_str: "test",
             test_string: "test".to_owned(),
             foo: Foo {},
         };
