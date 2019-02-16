@@ -1,3 +1,5 @@
+#![cfg(test)]
+
 use visit::visit;
 
 visit! {
@@ -19,13 +21,11 @@ visit! {
     struct Child {}
 }
 
-#[allow(dead_code)]
 struct MyVisitor {
     visit_result: Vec<&'static str>,
 }
 
 impl MyVisitor {
-    #[allow(dead_code)]
     fn new() -> Self {
         Self {
             visit_result: Vec::new(),
@@ -51,7 +51,6 @@ impl Visitor for MyVisitor {
     }
 }
 
-#[cfg(test)]
 mod tests {
     use super::*;
 

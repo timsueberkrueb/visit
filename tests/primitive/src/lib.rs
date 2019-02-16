@@ -1,3 +1,5 @@
+#![cfg(test)]
+
 use visit::visit;
 
 visit! {
@@ -30,13 +32,11 @@ visit! {
     }
 }
 
-#[allow(dead_code)]
 struct MyVisitor {
     visited_foo: bool,
 }
 
 impl MyVisitor {
-    #[allow(dead_code)]
     fn new() -> Self {
         Self { visited_foo: false }
     }
@@ -48,7 +48,6 @@ impl Visitor for MyVisitor {
     }
 }
 
-#[cfg(test)]
 mod test {
     use super::*;
 

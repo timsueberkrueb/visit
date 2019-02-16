@@ -1,3 +1,5 @@
+#![cfg(test)]
+
 use visit::visit;
 
 visit! {
@@ -8,7 +10,6 @@ visit! {
         foo2: Foo,
     }
 
-    #[allow(dead_code)]
     enum Foo {
         Bar { bar: BarItem },
         Baz { baz: BazItem },
@@ -18,13 +19,11 @@ visit! {
     struct BazItem {}
 }
 
-#[allow(dead_code)]
 struct MyVisitor {
     visit_result: Vec<&'static str>,
 }
 
 impl MyVisitor {
-    #[allow(dead_code)]
     fn new() -> Self {
         Self {
             visit_result: Vec::new(),
@@ -50,7 +49,6 @@ impl EnumVisitor for MyVisitor {
     }
 }
 
-#[cfg(test)]
 mod tests {
     use super::*;
 
