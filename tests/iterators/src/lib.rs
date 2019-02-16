@@ -27,6 +27,12 @@ visit! {
     struct Baz {
         id: usize,
     }
+
+    struct TestSlice<'a> {
+        slice: &'a [SliceContent],
+    }
+
+    struct SliceContent {}
 }
 
 struct MyVisitor {
@@ -60,6 +66,10 @@ impl Visitor for MyVisitor {
 
     fn visit_baz(&mut self, _baz: &Baz) {
         self.visit_result.push("Baz".to_owned());
+    }
+
+    fn visit_slice_content(&mut self, _empty: &SliceContent) {
+        self.visit_result.push("SliceContent".to_owned());
     }
 }
 
@@ -95,5 +105,14 @@ mod tests {
         let mut v = MyVisitor::new();
         tree.accept(&mut v);
         assert_eq!(vec!["Bar0", "Bar1", "FooArray"], v.visit_result);
+    }
+
+    #[test]
+    fn test_slice_simple() {
+        let test_vec = vec![SliceContent {}, SliceContent {}];
+        let test = TestSlice { slice: &test_vec };
+        let mut v = MyVisitor::new();
+        test.accept(&mut v);
+        assert_eq!(vec!["SliceContent", "SliceContent"], v.visit_result);
     }
 }
