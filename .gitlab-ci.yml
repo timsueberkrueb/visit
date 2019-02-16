@@ -1,0 +1,60 @@
+variables:
+  CARGO_HOME: $CI_PROJECT_DIR/.cargo
+
+test:nightly:
+  image: rustdocker/rust:nightly
+  before_script:
+    - rustc --version
+    - cargo --version
+  script:
+  - cargo build --verbose --all
+  - cargo test --verbose --all
+  cache:
+    paths:
+      - .cargo
+
+test:beta:
+  image: rustdocker/rust:beta
+  before_script:
+    - rustc --version
+    - cargo --version
+  script:
+  - cargo build --verbose --all
+  - cargo test --verbose --all
+  cache:
+    paths:
+      - .cargo
+
+test:stable:
+  image: rustdocker/rust:stable
+  before_script:
+    - rustc --version
+    - cargo --version
+  script:
+  - cargo build --verbose --all
+  - cargo test --verbose --all
+  cache:
+    paths:
+      - .cargo
+
+lint:
+  image: rustdocker/rustfmt_clippy:nightly
+  before_script:
+    - rustc --version
+    - cargo --version
+  script:
+    - cargo clippy
+  cache:
+    paths:
+      - .cargo
+
+codestyle:
+  image: rustdocker/rustfmt_clippy:nightly
+  before_script:
+    - rustc --version
+    - cargo --version
+  script:
+    - cargo fmt -- --check
+  cache:
+    paths:
+      - .cargo
