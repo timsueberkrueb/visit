@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "visit",
+    "tests/simple",
+    "tests/enums",
+]
