@@ -63,7 +63,7 @@ use syn::visit::Visit;
 ///
 /// Like `#![visitor_trait]`, but the generated trait will be `pub`.
 ///
-/// # Functioning
+/// # Details
 ///
 /// visit automatically generates a visitor trait named by the required `#![visitor_trait]` attribute:
 ///
