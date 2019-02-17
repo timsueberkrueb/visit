@@ -1,11 +1,20 @@
 use case::CaseExt;
 use quote::quote;
 
+use crate::parse::VisitorTraitInfo;
+
 pub fn generate_visitor_trait(
-    visitor_trait_ident: &syn::Ident,
+    visitor_trait_info: &VisitorTraitInfo,
     structs: &[&syn::ItemStruct],
     enums: &[&syn::ItemEnum],
 ) -> proc_macro2::TokenStream {
+    let visitor_trait_ident = &visitor_trait_info.ident;
+    let visitor_trait_pub = if visitor_trait_info.public {
+        quote! { pub }
+    } else {
+        quote! {}
+    };
+
     let items: Vec<_> = structs
         .iter()
         .by_ref()
@@ -46,7 +55,7 @@ pub fn generate_visitor_trait(
     let param_generics_2 = param_generics.clone();
 
     quote! {
-        trait #visitor_trait_ident {
+        #visitor_trait_pub trait #visitor_trait_ident {
             #(
                 fn #visit_fn_idents #param_generics (&mut self, #param_idents: &#idents #param_generics_2)
                 #param_where_clauses
@@ -63,11 +72,18 @@ struct GenericItem<'a> {
 }
 
 pub fn generate_accept_visitor_trait(
-    visitor_trait_ident: &syn::Ident,
+    visitor_trait_info: &VisitorTraitInfo,
     accept_trait_ident: &syn::Ident,
 ) -> proc_macro2::TokenStream {
+    let visitor_trait_ident = &visitor_trait_info.ident;
+    let visitor_trait_pub = if visitor_trait_info.public {
+        quote! { pub }
+    } else {
+        quote! {}
+    };
+
     quote! {
-        trait #accept_trait_ident {
+        #visitor_trait_pub trait #accept_trait_ident {
             fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V);
         }
     }

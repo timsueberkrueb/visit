@@ -1,6 +1,6 @@
 use syn::visit::Visit;
 
-pub fn get_visitor_trait_ident(file: &syn::File) -> proc_macro2::Ident {
+pub fn get_visitor_trait_info(file: &syn::File) -> VisitorTraitInfo {
     let mut visitor_trait_ident: Option<proc_macro2::Ident> = None;
 
     if file.attrs.len() > 1 {
@@ -8,22 +8,30 @@ pub fn get_visitor_trait_ident(file: &syn::File) -> proc_macro2::Ident {
     }
 
     let attr = &file.attrs[0];
+    let mut public = false;
 
     if let Ok(meta) = attr.parse_meta() {
-        if meta.name() == "visitor_trait" {
+        if meta.name() == "visitor_trait" || meta.name() == "visitor_trait_pub" {
             if let syn::Meta::NameValue(meta_value) = meta {
-                if meta_value.ident == "visitor_trait" {
-                    if let syn::Lit::Str(lit_str) = meta_value.lit {
-                        let ident =
-                            syn::Ident::new(&lit_str.value(), proc_macro2::Span::call_site());
-                        visitor_trait_ident = Some(ident);
-                    }
+                public = meta_value.ident == "visitor_trait_pub";
+                if let syn::Lit::Str(lit_str) = meta_value.lit {
+                    let ident = syn::Ident::new(&lit_str.value(), proc_macro2::Span::call_site());
+                    visitor_trait_ident = Some(ident);
                 }
             }
         }
     }
 
-    visitor_trait_ident.expect("Expected a `#[visitor_trait = \"VisitorTrait\"]` declaration.")
+    VisitorTraitInfo {
+        public,
+        ident: visitor_trait_ident
+            .expect("Expected a `#[visitor_trait = \"VisitorTrait\"]` declaration."),
+    }
+}
+
+pub struct VisitorTraitInfo {
+    pub public: bool,
+    pub ident: proc_macro2::Ident,
 }
 
 pub struct ASTVisitor<'ast> {
