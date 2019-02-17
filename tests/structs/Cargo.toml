@@ -1,5 +1,5 @@
 [package]
-name = "simple"
+name = "structs"
 version = "0.1.0"
 authors = ["Tim Süberkrüb <dev@timsueberkrueb.io>"]
 edition = "2018"

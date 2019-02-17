@@ -13,12 +13,9 @@ visit! {
         bar: Bar,
     }
 
-    struct Bar {
-        a: Child,
-        b: Child,
-    }
+    struct Bar(Child, Child);
 
-    struct Child {}
+    struct Child;
 }
 
 struct MyVisitor {
@@ -55,13 +52,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_simple() {
+    fn test_structs_simple() {
         let tree = MyTree {
             foo: Foo {
-                bar: Bar {
-                    a: Child {},
-                    b: Child {},
-                },
+                bar: Bar(Child {}, Child {}),
             },
         };
         let mut v = MyVisitor::new();

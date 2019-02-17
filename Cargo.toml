@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "visit",
-    "tests/simple",
+    "tests/structs",
     "tests/enums",
     "tests/iterators",
     "tests/primitive",

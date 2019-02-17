@@ -166,22 +166,35 @@ pub fn generate_accept_impl_for_struct(
     let struct_ident = &item_struct.ident;
     let fn_ident = visitor_item_fn_ident(struct_ident);
 
-    if let syn::Fields::Named(fields_named) = &item_struct.fields {
-        let field_idents = fields_named.named.iter().map(|f| f.ident.clone().unwrap());
-        quote! {
-            impl #generics_params #accept_trait_ident for #struct_ident #generics_params
-            #generics_where_clause
-            {
-                fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
-                    #(
-                        self.#field_idents.accept(visitor);
-                    )*
-                    visitor.#fn_ident(self);
-                }
+    let field_idents: Vec<_> = match &item_struct.fields {
+        syn::Fields::Named(fields_named) => fields_named
+            .named
+            .iter()
+            .map(|f| {
+                let ident = &f.ident;
+                quote! { #ident}
+            })
+            .collect(),
+        syn::Fields::Unnamed(fields_unnamed) => fields_unnamed
+            .unnamed
+            .iter()
+            .enumerate()
+            .map(|(i, _)| quote! { #i })
+            .collect(),
+        syn::Fields::Unit => Vec::new(),
+    };
+
+    quote! {
+        impl #generics_params #accept_trait_ident for #struct_ident #generics_params
+        #generics_where_clause
+        {
+            fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
+                #(
+                    self.#field_idents.accept(visitor);
+                )*
+                visitor.#fn_ident(self);
             }
         }
-    } else {
-        panic!("Only structs with named fields are supported, currently.");
     }
 }
 
@@ -204,25 +217,47 @@ pub fn generate_accept_impl_for_enum(
 
     for variant in item_enum.variants.iter().by_ref() {
         let variant_ident = &variant.ident;
-        if let syn::Fields::Named(fields_named) = &variant.fields {
-            let field_idents: Vec<_> = fields_named
-                .named
-                .iter()
-                .map(|f| f.ident.clone().unwrap())
-                .collect();
-            let field_idents_inner = field_idents.clone();
-            let match_arm = quote! {
-                #enum_ident::#variant_ident { #(#field_idents),* } => {
-                    #(
-                        #field_idents_inner.accept(visitor);
-                    )*
-                },
-            };
-
-            match_body.extend(match_arm);
-        } else {
-            panic!("Only enums with named fields are supported, currently.");
-        }
+        let match_arm = match &variant.fields {
+            syn::Fields::Named(fields_named) => {
+                let field_idents: Vec<_> = fields_named
+                    .named
+                    .iter()
+                    .map(|f| f.ident.clone().unwrap())
+                    .collect();
+                let field_idents_inner = field_idents.clone();
+                quote! {
+                    #enum_ident::#variant_ident { #(#field_idents),* } => {
+                        #(
+                            #field_idents_inner.accept(visitor);
+                        )*
+                    },
+                }
+            }
+            syn::Fields::Unnamed(fields_unamed) => {
+                let field_idents: Vec<_> = fields_unamed
+                    .unnamed
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| {
+                        syn::Ident::new(&format!("x{}", i), proc_macro2::Span::call_site())
+                    })
+                    .collect();
+                let field_idents_inner = field_idents.clone();
+                quote! {
+                    #enum_ident::#variant_ident ( #(#field_idents),* ) => {
+                        #(
+                            #field_idents_inner.accept(visitor);
+                        )*
+                    }
+                }
+            }
+            syn::Fields::Unit => {
+                quote! {
+                    #enum_ident::#variant_ident => {},
+                }
+            }
+        };
+        match_body.extend(match_arm);
     }
 
     quote! {
