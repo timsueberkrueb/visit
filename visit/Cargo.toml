@@ -3,9 +3,12 @@ name = "visit"
 version = "0.1.0"
 authors = ["Tim Süberkrüb <dev@timsueberkrueb.io>"]
 edition = "2018"
+description = "Automatically generate Rust code for the Visitor pattern"
+license = "MIT/Apache-2.0"
+repository = "https://github.com/timsueberkrueb/visit.git"
 
 [dev-dependencies]
-simple = { path = "../examples/simple" }
+simple = { path = "../examples/simple", version = "0.1.0" }
 
 [dependencies]
 # TODO: Remove extra-traits
