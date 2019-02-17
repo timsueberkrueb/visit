@@ -11,8 +11,7 @@ repository = "https://github.com/timsueberkrueb/visit.git"
 simple = { path = "../examples/simple", version = "0.1.0" }
 
 [dependencies]
-# TODO: Remove extra-traits
-syn = { version = "0.15", features = ["full", "extra-traits", "visit", "visit-mut"] }
+syn = { version = "0.15", features = ["full", "visit"] }
 proc-macro2 = "0.4"
 quote = "0.6"
 case = "1.0.0"
