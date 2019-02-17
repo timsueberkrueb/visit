@@ -120,6 +120,17 @@ pub fn generate_accept_visitor_impls(
                 }
             }
         }
+
+        impl<T> #accept_trait_ident for Option<T>
+        where
+            T: #accept_trait_ident
+        {
+            fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
+                if let Some(inner) = self {
+                    inner.accept(visitor);
+                }
+            }
+        }
     };
 
     // Ignore primitive datatypes by providing empty AcceptVisitor implementations

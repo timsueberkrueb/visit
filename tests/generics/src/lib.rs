@@ -26,12 +26,20 @@ visit! {
     struct LifetimeTest<'a> {
         s: &'a str,
     }
+
+    struct OptionTest {
+        maybe_foo1: Option<Foo>,
+        maybe_foo2: Option<Foo>,
+    }
+
+    struct Foo;
 }
 
 struct MyVisitor {
     visited_generic_test: bool,
     visited_lifetime_test: bool,
     visited_generic_enum: bool,
+    visited_option_count: usize,
 }
 
 impl MyVisitor {
@@ -40,6 +48,7 @@ impl MyVisitor {
             visited_generic_test: false,
             visited_lifetime_test: false,
             visited_generic_enum: false,
+            visited_option_count: 0,
         }
     }
 }
@@ -63,6 +72,10 @@ impl Visitor for MyVisitor {
 
     fn visit_lifetime_test<'a>(&mut self, _test: &LifetimeTest<'a>) {
         self.visited_lifetime_test = true;
+    }
+
+    fn visit_foo(&mut self, _foo: &Foo) {
+        self.visited_option_count += 1;
     }
 }
 
@@ -103,5 +116,16 @@ mod tests {
         let mut v = MyVisitor::new();
         test.accept(&mut v);
         assert!(v.visited_lifetime_test);
+    }
+
+    #[test]
+    fn test_option_simple() {
+        let test = OptionTest {
+            maybe_foo1: Some(Foo {}),
+            maybe_foo2: None,
+        };
+        let mut v = MyVisitor::new();
+        test.accept(&mut v);
+        assert_eq!(1, v.visited_option_count);
     }
 }
