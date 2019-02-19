@@ -6,4 +6,5 @@ members = [
     "tests/iterators",
     "tests/primitive",
     "tests/generics",
+    "tests/smart_pointers",
 ]

@@ -147,6 +147,15 @@ pub fn generate_accept_visitor_impls(
                 }
             }
         }
+
+        impl<T> #accept_trait_ident for Box<T>
+        where
+            T: #accept_trait_ident
+        {
+            fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
+                <Self as std::ops::Deref>::deref(self).accept(visitor);
+            }
+        }
     };
 
     // Ignore primitive datatypes by providing empty AcceptVisitor implementations
