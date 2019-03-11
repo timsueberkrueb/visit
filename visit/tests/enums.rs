@@ -1,9 +1,7 @@
-#![cfg(test)]
-
 use visit::visit;
 
 visit! {
-    #![visitor_trait = "EnumVisitor"]
+    #![visitor(name = "EnumVisitor")]
 
     struct Tree {
         foo1: Foo,

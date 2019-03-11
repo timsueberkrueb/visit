@@ -1,12 +1,10 @@
-#![cfg(test)]
-
 use std::rc::Rc;
 use std::sync::Arc;
 
 use visit::visit;
 
 visit! {
-    #![visitor_trait = "Visitor"]
+    #![visitor(name = "Visitor")]
 
     struct BoxRoot {
         foo: Box<BoxFoo>,

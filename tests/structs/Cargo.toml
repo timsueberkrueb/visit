@@ -1,8 +1,0 @@
-[package]
-name = "structs"
-version = "0.1.0"
-authors = ["Tim Süberkrüb <dev@timsueberkrueb.io>"]
-edition = "2018"
-
-[dependencies]
-visit = { path = "../../visit" }

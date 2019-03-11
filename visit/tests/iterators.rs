@@ -1,11 +1,9 @@
-#![cfg(test)]
-
 use std::collections::HashSet;
 
 use visit::visit;
 
 visit! {
-    #![visitor_trait = "Visitor"]
+    #![visitor(name = "Visitor")]
 
     struct FooVec {
         bars_vec: Vec<Bar>,

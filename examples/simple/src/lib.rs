@@ -1,7 +1,7 @@
 use visit::visit;
 
 visit! {
-    #![visitor_trait_pub = "Visitor"]
+    #![visitor(name = "Visitor", public = true)]
 
     pub struct Bar {
         pub a: Child,

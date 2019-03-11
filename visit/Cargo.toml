@@ -9,12 +9,14 @@ repository = "https://github.com/timsueberkrueb/visit.git"
 
 [dev-dependencies]
 simple = { path = "../examples/simple", version = "0.1.0" }
+compiletest_rs = { version = "0.3", features = ["stable"] }
 
 [dependencies]
 syn = { version = "0.15", features = ["full", "visit"] }
 proc-macro2 = "0.4"
 quote = "0.6"
-case = "1.0.0"
+case = "1.0"
+darling = "0.8"
 
 [lib]
 proc-macro = true

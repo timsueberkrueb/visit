@@ -1,10 +1,10 @@
 use case::CaseExt;
 use quote::quote;
 
-use crate::parse::VisitorTraitInfo;
+use crate::parse::VisitorTraitConf;
 
 pub fn generate_visitor_trait(
-    visitor_trait_info: &VisitorTraitInfo,
+    visitor_trait_info: &VisitorTraitConf,
     structs: &[&syn::ItemStruct],
     enums: &[&syn::ItemEnum],
 ) -> proc_macro2::TokenStream {
@@ -72,7 +72,7 @@ struct GenericItem<'a> {
 }
 
 pub fn generate_accept_visitor_trait(
-    visitor_trait_info: &VisitorTraitInfo,
+    visitor_trait_info: &VisitorTraitConf,
     accept_trait_ident: &syn::Ident,
 ) -> proc_macro2::TokenStream {
     let visitor_trait_ident = &visitor_trait_info.ident;

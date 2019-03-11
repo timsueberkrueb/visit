@@ -1,36 +1,41 @@
+use std::collections::HashSet;
+
+use darling::FromMeta;
 use syn::visit::Visit;
 
-pub fn get_visitor_trait_info(file: &syn::File) -> VisitorTraitInfo {
-    let mut visitor_trait_ident: Option<proc_macro2::Ident> = None;
+pub fn get_visitor_trait_configs(file: &syn::File) -> Vec<VisitorTraitConf> {
+    let mut names = HashSet::with_capacity(file.attrs.len());
 
-    if file.attrs.len() > 1 {
-        panic!("Multiple inner attributes or attributes other than `#[visitor_trait = \"VisitorTrait\"]` are not supported");
-    }
-
-    let attr = &file.attrs[0];
-    let mut public = false;
-
-    if let Ok(meta) = attr.parse_meta() {
-        if meta.name() == "visitor_trait" || meta.name() == "visitor_trait_pub" {
-            if let syn::Meta::NameValue(meta_value) = meta {
-                public = meta_value.ident == "visitor_trait_pub";
-                if let syn::Lit::Str(lit_str) = meta_value.lit {
-                    let ident = syn::Ident::new(&lit_str.value(), proc_macro2::Span::call_site());
-                    visitor_trait_ident = Some(ident);
+    file.attrs
+        .iter()
+        .by_ref()
+        .map(|attr| attr.parse_meta().expect("Failed to parse inner attribute"))
+        .filter(|meta| meta.name() == "visitor" || meta.name() == "hierarchical_visitor")
+        .map(|meta| {
+            if meta.name() == "visitor" || meta.name() == "hierarchical_visitor" {
+                let mut conf = VisitorTraitConf::from_meta(&meta)
+                    .unwrap_or_else(|_| panic!("Invalid synatax in `{}` attribute", meta.name()));
+                let name_string = conf.ident.to_string();
+                if names.contains(&name_string) {
+                    panic!("Visitor `{}` defined more than once", name_string);
                 }
+                names.insert(name_string);
+                conf.hierarchical = meta.name() == "hierarchical_visitor";
+                conf
+            } else {
+                panic!("Unexpect inner attribute `{}`", meta.name());
             }
-        }
-    }
-
-    VisitorTraitInfo {
-        public,
-        ident: visitor_trait_ident
-            .expect("Expected a `#[visitor_trait = \"VisitorTrait\"]` declaration."),
-    }
+        })
+        .collect()
 }
 
-pub struct VisitorTraitInfo {
+#[derive(Debug, FromMeta)]
+pub struct VisitorTraitConf {
+    #[darling(skip)]
+    pub hierarchical: bool,
+    #[darling(default)]
     pub public: bool,
+    #[darling(rename = "name")]
     pub ident: proc_macro2::Ident,
 }
 

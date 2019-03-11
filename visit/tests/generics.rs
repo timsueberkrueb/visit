@@ -1,9 +1,7 @@
-#![cfg(test)]
-
 use visit::visit;
 
 visit! {
-    #![visitor_trait = "Visitor"]
+    #![visitor(name = "Visitor")]
 
     struct GenericTest<A, B>
     where

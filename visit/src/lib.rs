@@ -18,7 +18,7 @@ use syn::visit::Visit;
 /// use visit::visit;
 ///
 /// visit! {
-///     #![visitor_trait = "Visitor"]
+///     #![visitor(name = "Visitor")]
 ///
 ///     struct Bar {
 ///         a: Child,
@@ -52,20 +52,15 @@ use syn::visit::Visit;
 /// # Attributes
 ///
 /// ```ignore
-/// #![visitor_trait = "Visitor"]
+/// #![visitor(name = "Visitor", public = true)]
 /// ```
 ///
-/// Set the name of the visitor trait that should be generated.
-///
-/// ```ignore
-/// #![visitor_trait_pub = "Visitor"]
-/// ```
-///
-/// Like `#![visitor_trait]`, but the generated trait will be `pub`.
+/// Generate a visitor trait with a given name. If `public` is true, the generated trait will be `pub`. `public` is
+/// `false` by default.
 ///
 /// # Details
 ///
-/// visit automatically generates a visitor trait named by the required `#![visitor_trait]` attribute:
+/// visit automatically generates visitor traits as declared by the `#![visitor]` attributes:
 ///
 /// ```
 /// # use simple::{Bar, Child};
@@ -83,7 +78,7 @@ use syn::visit::Visit;
 /// that are relevant to your current use case.
 ///
 /// visit also generates an accept visitor trait. It is named `AcceptVisitor` where `Visitor` will be replaced by the
-/// name specified using the `#![visitor_trait]` attribute.
+/// name specified using the respective `#![visitor]` attribute.
 ///
 /// ```
 /// # use simple::Visitor;
@@ -112,44 +107,57 @@ use syn::visit::Visit;
 #[proc_macro]
 pub fn visit(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let mut file: syn::File = syn::parse2(input.into()).unwrap();
-    // The only supported inner attribute in the visit macro context is a single `visitor_trait` declaration
-    let visitor_trait_info = parse::get_visitor_trait_info(&file);
-    let visitor_trait_ident = &visitor_trait_info.ident;
+    let visitor_configs = parse::get_visitor_trait_configs(&file);
+    // Inner attributes are not stable yet, therefore we have to cut them out
     file.attrs = Vec::new();
+
     let mut visitor = parse::ASTVisitor::new();
     visitor.visit_file(&file);
+
+    let mut result = proc_macro2::TokenStream::new();
+
+    for conf in visitor_configs {
+        let token_stream = generate_code(&visitor, &conf);
+        result.extend(token_stream);
+    }
+
+    let result = quote! {
+        #file
+        #result
+    };
+
+    result.into()
+}
+
+fn generate_code(
+    visitor: &parse::ASTVisitor,
+    conf: &parse::VisitorTraitConf,
+) -> proc_macro2::TokenStream {
     let visitor_trait_gen =
-        codegen::generate_visitor_trait(&visitor_trait_info, &visitor.structs, &visitor.enums);
-    let accept_trait_ident = codegen::accept_visitor_trait_ident(&visitor_trait_ident);
-    let accept_trait_gen =
-        codegen::generate_accept_visitor_trait(&visitor_trait_info, &accept_trait_ident);
+        codegen::generate_visitor_trait(&conf, &visitor.structs, &visitor.enums);
+    let accept_trait_ident = codegen::accept_visitor_trait_ident(&conf.ident);
+    let accept_trait_gen = codegen::generate_accept_visitor_trait(&conf, &accept_trait_ident);
     let accept_trait_impls =
-        codegen::generate_accept_visitor_impls(&visitor_trait_ident, &accept_trait_ident);
+        codegen::generate_accept_visitor_impls(&conf.ident, &accept_trait_ident);
 
     let mut accept_impls = proc_macro2::TokenStream::new();
-    for item_struct in visitor.structs {
+    for item_struct in visitor.structs.iter().by_ref() {
         let stream = codegen::generate_accept_impl_for_struct(
-            &visitor_trait_ident,
+            &conf.ident,
             &accept_trait_ident,
             &item_struct,
         );
         accept_impls.extend(stream);
     }
-    for item_enum in visitor.enums {
-        let stream = codegen::generate_accept_impl_for_enum(
-            &visitor_trait_ident,
-            &accept_trait_ident,
-            &item_enum,
-        );
+    for item_enum in visitor.enums.iter().by_ref() {
+        let stream =
+            codegen::generate_accept_impl_for_enum(&conf.ident, &accept_trait_ident, &item_enum);
         accept_impls.extend(stream);
     }
-
-    let result = quote! {
-        #file
+    quote! {
         #visitor_trait_gen
         #accept_trait_gen
         #accept_trait_impls
         #accept_impls
-    };
-    result.into()
+    }
 }
