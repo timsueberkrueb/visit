@@ -116,8 +116,10 @@ pub fn visit(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     let mut result = proc_macro2::TokenStream::new();
 
+    let generator = codegen::Generator::new(visitor.structs, visitor.enums);
+
     for conf in visitor_configs {
-        let token_stream = generate_code(&visitor, &conf);
+        let token_stream = generator.generate(&conf);
         result.extend(token_stream);
     }
 
@@ -127,37 +129,4 @@ pub fn visit(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     };
 
     result.into()
-}
-
-fn generate_code(
-    visitor: &parse::ASTVisitor,
-    conf: &parse::VisitorTraitConf,
-) -> proc_macro2::TokenStream {
-    let visitor_trait_gen =
-        codegen::generate_visitor_trait(&conf, &visitor.structs, &visitor.enums);
-    let accept_trait_ident = codegen::accept_visitor_trait_ident(&conf.ident);
-    let accept_trait_gen = codegen::generate_accept_visitor_trait(&conf, &accept_trait_ident);
-    let accept_trait_impls =
-        codegen::generate_accept_visitor_impls(&conf.ident, &accept_trait_ident);
-
-    let mut accept_impls = proc_macro2::TokenStream::new();
-    for item_struct in visitor.structs.iter().by_ref() {
-        let stream = codegen::generate_accept_impl_for_struct(
-            &conf.ident,
-            &accept_trait_ident,
-            &item_struct,
-        );
-        accept_impls.extend(stream);
-    }
-    for item_enum in visitor.enums.iter().by_ref() {
-        let stream =
-            codegen::generate_accept_impl_for_enum(&conf.ident, &accept_trait_ident, &item_enum);
-        accept_impls.extend(stream);
-    }
-    quote! {
-        #visitor_trait_gen
-        #accept_trait_gen
-        #accept_trait_impls
-        #accept_impls
-    }
 }

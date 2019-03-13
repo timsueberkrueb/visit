@@ -39,6 +39,14 @@ pub struct VisitorTraitConf {
     pub ident: proc_macro2::Ident,
 }
 
+impl VisitorTraitConf {
+    pub fn accept_trait_ident(&self) -> syn::Ident {
+        let visitor_trait_string = self.ident.to_string();
+        let accept_trait_string = format!("Accept{}", visitor_trait_string);
+        syn::Ident::new(&accept_trait_string, proc_macro2::Span::call_site())
+    }
+}
+
 pub struct ASTVisitor<'ast> {
     pub structs: Vec<&'ast syn::ItemStruct>,
     pub enums: Vec<&'ast syn::ItemEnum>,
