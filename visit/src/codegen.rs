@@ -4,28 +4,37 @@ use proc_quote::quote;
 
 use crate::parse::VisitorTraitConf;
 
-pub struct CodeGenerator<'ast> {
-    structs: Vec<&'ast syn::ItemStruct>,
-    enums: Vec<&'ast syn::ItemEnum>,
+pub struct CodeGenerator<'ast, 'cgen> {
+    structs: &'cgen [&'ast syn::ItemStruct],
+    enums: &'cgen [&'ast syn::ItemEnum],
+    conf: &'cgen VisitorTraitConf,
 }
 
-impl<'ast> CodeGenerator<'ast> {
-    pub fn new(structs: Vec<&'ast syn::ItemStruct>, enums: Vec<&'ast syn::ItemEnum>) -> Self {
-        Self { structs, enums }
+impl<'ast, 'cgen> CodeGenerator<'ast, 'cgen> {
+    pub fn new(
+        structs: &'cgen [&'ast syn::ItemStruct],
+        enums: &'cgen [&'ast syn::ItemEnum],
+        conf: &'cgen VisitorTraitConf,
+    ) -> Self {
+        Self {
+            structs,
+            enums,
+            conf,
+        }
     }
 
     pub fn generate(&self, conf: &VisitorTraitConf) -> TokenStream {
         let visitor_trait_gen = self.generate_visitor_trait(conf);
-        let accept_trait_gen = generate_accept_visitor_trait(conf);
-        let accept_trait_impls = generate_accept_visitor_impls(conf);
+        let accept_trait_gen = self.generate_accept_visitor_trait();
+        let accept_trait_impls = self.generate_accept_visitor_impls();
 
         let mut accept_impls = TokenStream::new();
         for item_struct in self.structs.iter().by_ref() {
-            let stream = generate_accept_impl_for_struct(conf, &item_struct);
+            let stream = self.generate_accept_impl_for_struct(&item_struct);
             accept_impls.extend(stream);
         }
         for item_enum in self.enums.iter().by_ref() {
-            let stream = generate_accept_impl_for_enum(conf, &item_enum);
+            let stream = self.generate_accept_impl_for_enum(&item_enum);
             accept_impls.extend(stream);
         }
         quote! {
@@ -59,6 +68,301 @@ impl<'ast> CodeGenerator<'ast> {
                 #function_defs
             }
         }
+    }
+
+    fn generate_accept_visitor_trait(&self) -> TokenStream {
+        let visitor_trait_ident = &self.conf.ident;
+        let accept_trait_ident = &self.conf.accept_trait_ident();
+        let visitor_trait_pub = if self.conf.public {
+            quote! { pub }
+        } else {
+            quote! {}
+        };
+
+        quote! {
+            #visitor_trait_pub trait #accept_trait_ident {
+                fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V);
+            }
+        }
+    }
+
+    fn generate_accept_impl_for_struct(&self, item_struct: &syn::ItemStruct) -> TokenStream {
+        let visitor_trait_ident = &self.conf.ident;
+        let accept_trait_ident = self.conf.accept_trait_ident();
+
+        let generics_params = &item_struct.generics.params;
+        let generics_params = if generics_params.is_empty() {
+            quote! {}
+        } else {
+            quote! { <#generics_params> }
+        };
+        let generics_where_clause = &item_struct.generics.where_clause;
+
+        let struct_ident = &item_struct.ident;
+
+        let field_idents: Vec<_> = match &item_struct.fields {
+            syn::Fields::Named(fields_named) => fields_named
+                .named
+                .iter()
+                .map(|f| {
+                    let ident = &f.ident;
+                    quote! { #ident}
+                })
+                .collect(),
+            syn::Fields::Unnamed(fields_unnamed) => fields_unnamed
+                .unnamed
+                .iter()
+                .enumerate()
+                .map(|(i, _)| quote! { #i })
+                .collect(),
+            syn::Fields::Unit => Vec::new(),
+        };
+
+        let accept_body = if self.conf.hierarchical {
+            let enter_ident = enter_fn_ident(struct_ident);
+            let leave_ident = leave_fn_ident(struct_ident);
+            quote! {
+                visitor.#enter_ident(self);
+                #(
+                    #accept_trait_ident::accept(&self.#field_idents, visitor);
+                )*
+                visitor.#leave_ident(self);
+            }
+        } else {
+            let fn_ident = visit_fn_ident(struct_ident);
+            quote! {
+                #(
+                    #accept_trait_ident::accept(&self.#field_idents, visitor);
+                )*
+                visitor.#fn_ident(self);
+            }
+        };
+
+        quote! {
+            impl #generics_params #accept_trait_ident for #struct_ident #generics_params
+            #generics_where_clause
+            {
+                fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
+                    #accept_body
+                }
+            }
+        }
+    }
+
+    fn generate_accept_impl_for_enum(&self, item_enum: &syn::ItemEnum) -> TokenStream {
+        let visitor_trait_ident = &self.conf.ident;
+        let accept_trait_ident = self.conf.accept_trait_ident();
+        let enum_ident = &item_enum.ident;
+        let generics_params = &item_enum.generics.params;
+        let generics_params = if generics_params.is_empty() {
+            quote! {}
+        } else {
+            quote! { <#generics_params> }
+        };
+        let generics_where_clause = &item_enum.generics.where_clause;
+
+        let mut match_body = TokenStream::new();
+
+        for variant in item_enum.variants.iter().by_ref() {
+            let variant_ident = &variant.ident;
+            let match_arm = match &variant.fields {
+                syn::Fields::Named(fields_named) => {
+                    let field_idents: Vec<_> = fields_named
+                        .named
+                        .iter()
+                        .map(|f| f.ident.clone().unwrap())
+                        .collect();
+                    let field_idents_inner = field_idents.clone();
+                    quote! {
+                        #enum_ident::#variant_ident { #(#field_idents),* } => {
+                            #(
+                                #accept_trait_ident::accept(#field_idents_inner, visitor);
+                            )*
+                        },
+                    }
+                }
+                syn::Fields::Unnamed(fields_unamed) => {
+                    let field_idents: Vec<_> = fields_unamed
+                        .unnamed
+                        .iter()
+                        .enumerate()
+                        .map(|(i, _)| {
+                            syn::Ident::new(&format!("x{}", i), proc_macro2::Span::call_site())
+                        })
+                        .collect();
+                    let field_idents_inner = field_idents.clone();
+                    quote! {
+                        #enum_ident::#variant_ident ( #(#field_idents),* ) => {
+                            #(
+                                #accept_trait_ident::accept(#field_idents_inner, visitor);
+                            )*
+                        }
+                    }
+                }
+                syn::Fields::Unit => {
+                    quote! {
+                        #enum_ident::#variant_ident => {},
+                    }
+                }
+            };
+            match_body.extend(match_arm);
+        }
+
+        let accept_body = if self.conf.hierarchical {
+            let enter_ident = enter_fn_ident(enum_ident);
+            let leave_ident = leave_fn_ident(enum_ident);
+            quote! {
+                visitor.#enter_ident(self);
+                match self {
+                    #match_body
+                }
+                visitor.#leave_ident(self);
+            }
+        } else {
+            let fn_ident = visit_fn_ident(enum_ident);
+            quote! {
+                match self {
+                    #match_body
+                }
+                visitor.#fn_ident(self);
+            }
+        };
+
+        quote! {
+            impl #generics_params #accept_trait_ident for #enum_ident #generics_params
+            #generics_where_clause
+            {
+                fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
+                    #accept_body
+                }
+            }
+        }
+    }
+
+    fn generate_accept_visitor_impls(&self) -> TokenStream {
+        let visitor_trait_ident = &self.conf.ident;
+        let accept_trait_ident = self.conf.accept_trait_ident();
+
+        macro_rules! impl_empty_accept {
+            ($t:ty) => {
+                quote! {
+                    impl #accept_trait_ident for $t {
+                        fn accept<V: #visitor_trait_ident>(&self, _visitor: &mut V) {}
+                    }
+                }
+            };
+        }
+
+        let mut stream = quote! {
+            impl<TItem> #accept_trait_ident for [TItem]
+            where
+                TItem: #accept_trait_ident
+            {
+                fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
+                    for item in self.iter().by_ref() {
+                        item.accept(visitor);
+                    }
+                }
+            }
+
+            impl<TItem> #accept_trait_ident for &[TItem]
+            where
+                TItem: #accept_trait_ident
+            {
+                fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
+                    for item in self.iter().by_ref() {
+                        item.accept(visitor);
+                    }
+                }
+            }
+
+            impl<TItem> #accept_trait_ident for Vec<TItem>
+            where
+                TItem: #accept_trait_ident
+            {
+                fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
+                    for item in self.iter().by_ref() {
+                        item.accept(visitor);
+                    }
+                }
+            }
+
+            impl<TItem> #accept_trait_ident for std::collections::HashSet<TItem>
+            where
+                TItem: #accept_trait_ident + Eq + std::hash::Hash,
+            {
+                fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
+                    for item in self.iter().by_ref() {
+                        item.accept(visitor);
+                    }
+                }
+            }
+
+            impl<T> #accept_trait_ident for Option<T>
+            where
+                T: #accept_trait_ident
+            {
+                fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
+                    if let Some(inner) = self {
+                        inner.accept(visitor);
+                    }
+                }
+            }
+
+            impl<T> #accept_trait_ident for Box<T>
+            where
+                T: #accept_trait_ident
+            {
+                fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
+                    <Self as std::ops::Deref>::deref(self).accept(visitor);
+                }
+            }
+
+            impl<T> #accept_trait_ident for std::rc::Rc<T>
+            where
+                T: #accept_trait_ident
+            {
+                fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
+                    <Self as std::ops::Deref>::deref(self).accept(visitor);
+                }
+            }
+
+            impl<T> #accept_trait_ident for std::sync::Arc<T>
+            where
+                T: #accept_trait_ident
+            {
+                fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
+                    <Self as std::ops::Deref>::deref(self).accept(visitor);
+                }
+            }
+        };
+
+        // Ignore primitive datatypes by providing empty AcceptVisitor implementations
+
+        stream.extend(impl_empty_accept!(u8));
+        stream.extend(impl_empty_accept!(u16));
+        stream.extend(impl_empty_accept!(u32));
+        stream.extend(impl_empty_accept!(u64));
+        stream.extend(impl_empty_accept!(u128));
+
+        stream.extend(impl_empty_accept!(i8));
+        stream.extend(impl_empty_accept!(i16));
+        stream.extend(impl_empty_accept!(i32));
+        stream.extend(impl_empty_accept!(i64));
+        stream.extend(impl_empty_accept!(i128));
+
+        stream.extend(impl_empty_accept!(usize));
+        stream.extend(impl_empty_accept!(isize));
+
+        stream.extend(impl_empty_accept!(f32));
+        stream.extend(impl_empty_accept!(f64));
+
+        stream.extend(impl_empty_accept!(bool));
+
+        stream.extend(impl_empty_accept!(String));
+        stream.extend(impl_empty_accept!(&str));
+
+        stream
     }
 }
 
@@ -125,307 +429,6 @@ struct GenericItem<'a> {
     generics: &'a syn::Generics,
 }
 
-fn generate_accept_visitor_trait(conf: &VisitorTraitConf) -> TokenStream {
-    let visitor_trait_ident = &conf.ident;
-    let accept_trait_ident = &conf.accept_trait_ident();
-    let visitor_trait_pub = if conf.public {
-        quote! { pub }
-    } else {
-        quote! {}
-    };
-
-    quote! {
-        #visitor_trait_pub trait #accept_trait_ident {
-            fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V);
-        }
-    }
-}
-
-fn generate_accept_impl_for_struct(
-    conf: &VisitorTraitConf,
-    item_struct: &syn::ItemStruct,
-) -> TokenStream {
-    let visitor_trait_ident = &conf.ident;
-    let accept_trait_ident = conf.accept_trait_ident();
-
-    let generics_params = &item_struct.generics.params;
-    let generics_params = if generics_params.is_empty() {
-        quote! {}
-    } else {
-        quote! { <#generics_params> }
-    };
-    let generics_where_clause = &item_struct.generics.where_clause;
-
-    let struct_ident = &item_struct.ident;
-
-    let field_idents: Vec<_> = match &item_struct.fields {
-        syn::Fields::Named(fields_named) => fields_named
-            .named
-            .iter()
-            .map(|f| {
-                let ident = &f.ident;
-                quote! { #ident}
-            })
-            .collect(),
-        syn::Fields::Unnamed(fields_unnamed) => fields_unnamed
-            .unnamed
-            .iter()
-            .enumerate()
-            .map(|(i, _)| quote! { #i })
-            .collect(),
-        syn::Fields::Unit => Vec::new(),
-    };
-
-    let accept_body = if conf.hierarchical {
-        let enter_ident = enter_fn_ident(struct_ident);
-        let leave_ident = leave_fn_ident(struct_ident);
-        quote! {
-            visitor.#enter_ident(self);
-            #(
-                #accept_trait_ident::accept(&self.#field_idents, visitor);
-            )*
-            visitor.#leave_ident(self);
-        }
-    } else {
-        let fn_ident = visit_fn_ident(struct_ident);
-        quote! {
-            #(
-                #accept_trait_ident::accept(&self.#field_idents, visitor);
-            )*
-            visitor.#fn_ident(self);
-        }
-    };
-
-    quote! {
-        impl #generics_params #accept_trait_ident for #struct_ident #generics_params
-        #generics_where_clause
-        {
-            fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
-                #accept_body
-            }
-        }
-    }
-}
-
-fn generate_accept_impl_for_enum(
-    conf: &VisitorTraitConf,
-    item_enum: &syn::ItemEnum,
-) -> TokenStream {
-    let visitor_trait_ident = &conf.ident;
-    let accept_trait_ident = conf.accept_trait_ident();
-    let enum_ident = &item_enum.ident;
-    let generics_params = &item_enum.generics.params;
-    let generics_params = if generics_params.is_empty() {
-        quote! {}
-    } else {
-        quote! { <#generics_params> }
-    };
-    let generics_where_clause = &item_enum.generics.where_clause;
-
-    let mut match_body = TokenStream::new();
-
-    for variant in item_enum.variants.iter().by_ref() {
-        let variant_ident = &variant.ident;
-        let match_arm = match &variant.fields {
-            syn::Fields::Named(fields_named) => {
-                let field_idents: Vec<_> = fields_named
-                    .named
-                    .iter()
-                    .map(|f| f.ident.clone().unwrap())
-                    .collect();
-                let field_idents_inner = field_idents.clone();
-                quote! {
-                    #enum_ident::#variant_ident { #(#field_idents),* } => {
-                        #(
-                            #accept_trait_ident::accept(#field_idents_inner, visitor);
-                        )*
-                    },
-                }
-            }
-            syn::Fields::Unnamed(fields_unamed) => {
-                let field_idents: Vec<_> = fields_unamed
-                    .unnamed
-                    .iter()
-                    .enumerate()
-                    .map(|(i, _)| {
-                        syn::Ident::new(&format!("x{}", i), proc_macro2::Span::call_site())
-                    })
-                    .collect();
-                let field_idents_inner = field_idents.clone();
-                quote! {
-                    #enum_ident::#variant_ident ( #(#field_idents),* ) => {
-                        #(
-                            #accept_trait_ident::accept(#field_idents_inner, visitor);
-                        )*
-                    }
-                }
-            }
-            syn::Fields::Unit => {
-                quote! {
-                    #enum_ident::#variant_ident => {},
-                }
-            }
-        };
-        match_body.extend(match_arm);
-    }
-
-    let accept_body = if conf.hierarchical {
-        let enter_ident = enter_fn_ident(enum_ident);
-        let leave_ident = leave_fn_ident(enum_ident);
-        quote! {
-            visitor.#enter_ident(self);
-            match self {
-                #match_body
-            }
-            visitor.#leave_ident(self);
-        }
-    } else {
-        let fn_ident = visit_fn_ident(enum_ident);
-        quote! {
-            match self {
-                #match_body
-            }
-            visitor.#fn_ident(self);
-        }
-    };
-
-    quote! {
-        impl #generics_params #accept_trait_ident for #enum_ident #generics_params
-        #generics_where_clause
-        {
-            fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
-                #accept_body
-            }
-        }
-    }
-}
-
-fn generate_accept_visitor_impls(conf: &VisitorTraitConf) -> TokenStream {
-    let visitor_trait_ident = &conf.ident;
-    let accept_trait_ident = conf.accept_trait_ident();
-
-    macro_rules! impl_empty_accept {
-        ($t:ty) => {
-            quote! {
-                impl #accept_trait_ident for $t {
-                    fn accept<V: #visitor_trait_ident>(&self, _visitor: &mut V) {}
-                }
-            }
-        };
-    }
-
-    let mut stream = quote! {
-        impl<TItem> #accept_trait_ident for [TItem]
-        where
-            TItem: #accept_trait_ident
-        {
-            fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
-                for item in self.iter().by_ref() {
-                    item.accept(visitor);
-                }
-            }
-        }
-
-        impl<TItem> #accept_trait_ident for &[TItem]
-        where
-            TItem: #accept_trait_ident
-        {
-            fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
-                for item in self.iter().by_ref() {
-                    item.accept(visitor);
-                }
-            }
-        }
-
-        impl<TItem> #accept_trait_ident for Vec<TItem>
-        where
-            TItem: #accept_trait_ident
-        {
-            fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
-                for item in self.iter().by_ref() {
-                    item.accept(visitor);
-                }
-            }
-        }
-
-        impl<TItem> #accept_trait_ident for std::collections::HashSet<TItem>
-        where
-            TItem: #accept_trait_ident + Eq + std::hash::Hash,
-        {
-            fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
-                for item in self.iter().by_ref() {
-                    item.accept(visitor);
-                }
-            }
-        }
-
-        impl<T> #accept_trait_ident for Option<T>
-        where
-            T: #accept_trait_ident
-        {
-            fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
-                if let Some(inner) = self {
-                    inner.accept(visitor);
-                }
-            }
-        }
-
-        impl<T> #accept_trait_ident for Box<T>
-        where
-            T: #accept_trait_ident
-        {
-            fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
-                <Self as std::ops::Deref>::deref(self).accept(visitor);
-            }
-        }
-
-        impl<T> #accept_trait_ident for std::rc::Rc<T>
-        where
-            T: #accept_trait_ident
-        {
-            fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
-                <Self as std::ops::Deref>::deref(self).accept(visitor);
-            }
-        }
-
-        impl<T> #accept_trait_ident for std::sync::Arc<T>
-        where
-            T: #accept_trait_ident
-        {
-            fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
-                <Self as std::ops::Deref>::deref(self).accept(visitor);
-            }
-        }
-    };
-
-    // Ignore primitive datatypes by providing empty AcceptVisitor implementations
-
-    stream.extend(impl_empty_accept!(u8));
-    stream.extend(impl_empty_accept!(u16));
-    stream.extend(impl_empty_accept!(u32));
-    stream.extend(impl_empty_accept!(u64));
-    stream.extend(impl_empty_accept!(u128));
-
-    stream.extend(impl_empty_accept!(i8));
-    stream.extend(impl_empty_accept!(i16));
-    stream.extend(impl_empty_accept!(i32));
-    stream.extend(impl_empty_accept!(i64));
-    stream.extend(impl_empty_accept!(i128));
-
-    stream.extend(impl_empty_accept!(usize));
-    stream.extend(impl_empty_accept!(isize));
-
-    stream.extend(impl_empty_accept!(f32));
-    stream.extend(impl_empty_accept!(f64));
-
-    stream.extend(impl_empty_accept!(bool));
-
-    stream.extend(impl_empty_accept!(String));
-    stream.extend(impl_empty_accept!(&str));
-
-    stream
-}
-
 fn visit_fn_ident(item_ident: &proc_macro2::Ident) -> proc_macro2::Ident {
     prefixed_fn_ident("visit", item_ident)
 }
@@ -438,7 +441,7 @@ fn leave_fn_ident(item_ident: &proc_macro2::Ident) -> proc_macro2::Ident {
     prefixed_fn_ident("leave", item_ident)
 }
 
-fn prefixed_fn_ident(prefix: &'static str, item_ident: &proc_macro2::Ident) -> proc_macro2::Ident {
+fn prefixed_fn_ident(prefix: &str, item_ident: &proc_macro2::Ident) -> proc_macro2::Ident {
     let ident_string = item_ident.to_string();
     let ident_snake = ident_string.to_snake();
     let prefixed_string = format!("{}_{}", prefix, ident_snake);

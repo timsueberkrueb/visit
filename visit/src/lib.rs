@@ -116,9 +116,9 @@ pub fn visit(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     let mut result = proc_macro2::TokenStream::new();
 
-    let generator = codegen::CodeGenerator::new(visitor.structs, visitor.enums);
-
     for conf in visitor_configs {
+        let generator = codegen::CodeGenerator::new(&visitor.structs, &visitor.enums, &conf);
+
         let token_stream = generator.generate(&conf);
         result.extend(token_stream);
     }

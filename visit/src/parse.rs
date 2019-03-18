@@ -34,6 +34,10 @@ pub struct VisitorTraitConf {
     #[darling(skip)]
     pub hierarchical: bool,
     #[darling(default)]
+    pub enter: Option<proc_macro2::Ident>,
+    #[darling(default)]
+    pub leave: Option<proc_macro2::Ident>,
+    #[darling(default)]
     pub public: bool,
     #[darling(rename = "name")]
     pub ident: proc_macro2::Ident,
