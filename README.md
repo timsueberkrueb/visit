@@ -9,7 +9,7 @@ visit! {
     // Automatically generates `Visitor` and `AcceptVisitor` traits
     // The `Visitor` trait will contain `visit_<child>` functions for all items inside of the macro call.
     // The `AcceptVisitor` will be implemented automatically for all items.
-    #![visitor_trait = "Visitor"]
+    #![visitor(name = "Visitor")]
 
     struct Bar {
         a: Child,
