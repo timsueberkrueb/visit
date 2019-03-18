@@ -2,7 +2,7 @@ use visit::visit;
 
 visit! {
     #![visitor(name = "Visitor")]
-    #![hierarchical_visitor(name = "HierVisitor")]
+    #![visitor(name = "HierVisitor", enter = "enter", leave = "leave")]
 
     struct Primitives<'a> {
         test_u8: u8,

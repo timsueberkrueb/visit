@@ -10,17 +10,29 @@ pub fn get_visitor_trait_configs(file: &syn::File) -> Vec<VisitorTraitConf> {
         .iter()
         .by_ref()
         .map(|attr| attr.parse_meta().expect("Failed to parse inner attribute"))
-        .filter(|meta| meta.name() == "visitor" || meta.name() == "hierarchical_visitor")
+        .filter(|meta| meta.name() == "visitor")
         .map(|meta| {
-            if meta.name() == "visitor" || meta.name() == "hierarchical_visitor" {
+            if meta.name() == "visitor" {
                 let mut conf = VisitorTraitConf::from_meta(&meta)
                     .unwrap_or_else(|_| panic!("Invalid synatax in `{}` attribute", meta.name()));
-                let name_string = conf.ident.to_string();
+                let name_string = conf.name.to_string();
                 if names.contains(&name_string) {
                     panic!("Visitor `{}` defined more than once", name_string);
                 }
+                if let (None, None) = (&conf.leave, &conf.enter) {
+                    let default_ident =
+                        proc_macro2::Ident::new("visit", proc_macro2::Span::call_site());
+                    conf.leave = Some(default_ident);
+                }
+                if let (Some(leave), Some(enter)) = (&conf.leave, &conf.enter) {
+                    if leave == enter {
+                        panic!(
+                            "Same identifier `{}` used for both leave and enter",
+                            leave.to_string()
+                        )
+                    }
+                }
                 names.insert(name_string);
-                conf.hierarchical = meta.name() == "hierarchical_visitor";
                 conf
             } else {
                 panic!("Unexpect inner attribute `{}`", meta.name());
@@ -31,21 +43,18 @@ pub fn get_visitor_trait_configs(file: &syn::File) -> Vec<VisitorTraitConf> {
 
 #[derive(Debug, FromMeta)]
 pub struct VisitorTraitConf {
-    #[darling(skip)]
-    pub hierarchical: bool,
     #[darling(default)]
     pub enter: Option<proc_macro2::Ident>,
     #[darling(default)]
     pub leave: Option<proc_macro2::Ident>,
     #[darling(default)]
     pub public: bool,
-    #[darling(rename = "name")]
-    pub ident: proc_macro2::Ident,
+    pub name: proc_macro2::Ident,
 }
 
 impl VisitorTraitConf {
     pub fn accept_trait_ident(&self) -> syn::Ident {
-        let visitor_trait_string = self.ident.to_string();
+        let visitor_trait_string = self.name.to_string();
         let accept_trait_string = format!("Accept{}", visitor_trait_string);
         syn::Ident::new(&accept_trait_string, proc_macro2::Span::call_site())
     }

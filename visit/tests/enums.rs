@@ -2,7 +2,7 @@ use visit::visit;
 
 visit! {
     #![visitor(name = "EnumVisitor")]
-    #![hierarchical_visitor(name = "HierVisitor")]
+    #![visitor(name = "HierVisitor", enter = "enter", leave = "leave")]
 
     struct Tree {
         foo1: Foo,

@@ -5,7 +5,7 @@ use visit::visit;
 
 visit! {
     #![visitor(name = "Visitor")]
-    #![hierarchical_visitor(name = "HierVisitor")]
+    #![visitor(name = "HierVisitor", enter = "enter", leave = "leave")]
 
     struct BoxRoot {
         foo: Box<BoxFoo>,

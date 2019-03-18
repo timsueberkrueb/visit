@@ -46,7 +46,7 @@ impl<'ast, 'cgen> CodeGenerator<'ast, 'cgen> {
     }
 
     fn generate_visitor_trait(&self, conf: &VisitorTraitConf) -> TokenStream {
-        let visitor_trait_ident = &conf.ident;
+        let visitor_trait_ident = &conf.name;
         let visitor_trait_pub = if conf.public {
             quote! { pub }
         } else {
@@ -54,24 +54,27 @@ impl<'ast, 'cgen> CodeGenerator<'ast, 'cgen> {
         };
 
         let items = generalize_items(&self.structs, &self.enums);
-        let function_defs = if conf.hierarchical {
-            let mut defs = generate_functions_defs_for(&items, |ident| enter_fn_ident(ident));
-            let leave_defs = generate_functions_defs_for(&items, |ident| leave_fn_ident(ident));
-            defs.extend(leave_defs);
-            defs
-        } else {
-            generate_functions_defs_for(&items, |ident| visit_fn_ident(ident))
-        };
+
+        let enter_and_leave = [&self.conf.enter, &self.conf.leave];
+        let function_defs = enter_and_leave
+            .iter()
+            .filter_map(|maybe_ident| maybe_ident.as_ref())
+            .map(|ident| ident.to_string())
+            .map(|prefix| {
+                generate_function_defs_for(&items, |ident| prefixed_fn_ident(&prefix, ident))
+            });
 
         quote! {
             #visitor_trait_pub trait #visitor_trait_ident {
-                #function_defs
+                #(
+                    #function_defs
+                )*
             }
         }
     }
 
     fn generate_accept_visitor_trait(&self) -> TokenStream {
-        let visitor_trait_ident = &self.conf.ident;
+        let visitor_trait_ident = &self.conf.name;
         let accept_trait_ident = &self.conf.accept_trait_ident();
         let visitor_trait_pub = if self.conf.public {
             quote! { pub }
@@ -87,7 +90,7 @@ impl<'ast, 'cgen> CodeGenerator<'ast, 'cgen> {
     }
 
     fn generate_accept_impl_for_struct(&self, item_struct: &syn::ItemStruct) -> TokenStream {
-        let visitor_trait_ident = &self.conf.ident;
+        let visitor_trait_ident = &self.conf.name;
         let accept_trait_ident = self.conf.accept_trait_ident();
 
         let generics_params = &item_struct.generics.params;
@@ -118,24 +121,14 @@ impl<'ast, 'cgen> CodeGenerator<'ast, 'cgen> {
             syn::Fields::Unit => Vec::new(),
         };
 
-        let accept_body = if self.conf.hierarchical {
-            let enter_ident = enter_fn_ident(struct_ident);
-            let leave_ident = leave_fn_ident(struct_ident);
-            quote! {
-                visitor.#enter_ident(self);
-                #(
-                    #accept_trait_ident::accept(&self.#field_idents, visitor);
-                )*
-                visitor.#leave_ident(self);
-            }
-        } else {
-            let fn_ident = visit_fn_ident(struct_ident);
-            quote! {
-                #(
-                    #accept_trait_ident::accept(&self.#field_idents, visitor);
-                )*
-                visitor.#fn_ident(self);
-            }
+        let (enter_code, leave_code) = self.generate_visit_fn_calls_for(struct_ident);
+
+        let accept_body = quote! {
+            #enter_code
+            #(
+                #accept_trait_ident::accept(&self.#field_idents, visitor);
+            )*
+            #leave_code
         };
 
         quote! {
@@ -150,7 +143,7 @@ impl<'ast, 'cgen> CodeGenerator<'ast, 'cgen> {
     }
 
     fn generate_accept_impl_for_enum(&self, item_enum: &syn::ItemEnum) -> TokenStream {
-        let visitor_trait_ident = &self.conf.ident;
+        let visitor_trait_ident = &self.conf.name;
         let accept_trait_ident = self.conf.accept_trait_ident();
         let enum_ident = &item_enum.ident;
         let generics_params = &item_enum.generics.params;
@@ -208,24 +201,14 @@ impl<'ast, 'cgen> CodeGenerator<'ast, 'cgen> {
             match_body.extend(match_arm);
         }
 
-        let accept_body = if self.conf.hierarchical {
-            let enter_ident = enter_fn_ident(enum_ident);
-            let leave_ident = leave_fn_ident(enum_ident);
-            quote! {
-                visitor.#enter_ident(self);
-                match self {
-                    #match_body
-                }
-                visitor.#leave_ident(self);
+        let (enter_code, leave_code) = self.generate_visit_fn_calls_for(enum_ident);
+
+        let accept_body = quote! {
+            #enter_code
+            match self {
+                #match_body
             }
-        } else {
-            let fn_ident = visit_fn_ident(enum_ident);
-            quote! {
-                match self {
-                    #match_body
-                }
-                visitor.#fn_ident(self);
-            }
+            #leave_code
         };
 
         quote! {
@@ -239,8 +222,35 @@ impl<'ast, 'cgen> CodeGenerator<'ast, 'cgen> {
         }
     }
 
+    fn generate_visit_fn_calls_for(
+        &self,
+        ident: &proc_macro2::Ident,
+    ) -> (TokenStream, TokenStream) {
+        let enter_code = if let Some(enter_prefix) = &self.conf.enter {
+            let enter_prefix = enter_prefix.to_string();
+            let enter_fn_ident = prefixed_fn_ident(&enter_prefix, ident);
+            quote! {
+                visitor.#enter_fn_ident(self);
+            }
+        } else {
+            quote! {}
+        };
+
+        let leave_code = if let Some(leave_prefix) = &self.conf.leave {
+            let leave_prefix = leave_prefix.to_string();
+            let leave_fn_ident = prefixed_fn_ident(&leave_prefix, ident);
+            quote! {
+                visitor.#leave_fn_ident(self);
+            }
+        } else {
+            quote! {}
+        };
+
+        (enter_code, leave_code)
+    }
+
     fn generate_accept_visitor_impls(&self) -> TokenStream {
-        let visitor_trait_ident = &self.conf.ident;
+        let visitor_trait_ident = &self.conf.name;
         let accept_trait_ident = self.conf.accept_trait_ident();
 
         macro_rules! impl_empty_accept {
@@ -384,7 +394,7 @@ fn generalize_items<'a>(
         .collect()
 }
 
-fn generate_functions_defs_for<F>(items: &[GenericItem], map_name: F) -> TokenStream
+fn generate_function_defs_for<F>(items: &[GenericItem], map_name: F) -> TokenStream
 where
     F: Fn(&proc_macro2::Ident) -> proc_macro2::Ident,
 {
@@ -427,18 +437,6 @@ where
 struct GenericItem<'a> {
     ident: &'a syn::Ident,
     generics: &'a syn::Generics,
-}
-
-fn visit_fn_ident(item_ident: &proc_macro2::Ident) -> proc_macro2::Ident {
-    prefixed_fn_ident("visit", item_ident)
-}
-
-fn enter_fn_ident(item_ident: &proc_macro2::Ident) -> proc_macro2::Ident {
-    prefixed_fn_ident("enter", item_ident)
-}
-
-fn leave_fn_ident(item_ident: &proc_macro2::Ident) -> proc_macro2::Ident {
-    prefixed_fn_ident("leave", item_ident)
 }
 
 fn prefixed_fn_ident(prefix: &str, item_ident: &proc_macro2::Ident) -> proc_macro2::Ident {
