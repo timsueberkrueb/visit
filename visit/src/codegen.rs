@@ -4,12 +4,12 @@ use proc_quote::quote;
 
 use crate::parse::VisitorTraitConf;
 
-pub struct Generator<'ast> {
+pub struct CodeGenerator<'ast> {
     structs: Vec<&'ast syn::ItemStruct>,
     enums: Vec<&'ast syn::ItemEnum>,
 }
 
-impl<'ast> Generator<'ast> {
+impl<'ast> CodeGenerator<'ast> {
     pub fn new(structs: Vec<&'ast syn::ItemStruct>, enums: Vec<&'ast syn::ItemEnum>) -> Self {
         Self { structs, enums }
     }
