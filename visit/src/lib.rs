@@ -2,7 +2,7 @@
 
 extern crate proc_macro;
 
-use quote::quote;
+use proc_quote::quote;
 
 mod codegen;
 mod parse;

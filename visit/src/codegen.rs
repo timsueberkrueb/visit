@@ -1,6 +1,6 @@
 use case::CaseExt;
 use proc_macro2::TokenStream;
-use quote::quote;
+use proc_quote::quote;
 
 use crate::parse::VisitorTraitConf;
 
@@ -15,8 +15,8 @@ impl<'ast> Generator<'ast> {
     }
 
     pub fn generate(&self, conf: &VisitorTraitConf) -> TokenStream {
-        let visitor_trait_gen = self.generate_visitor_trait(&conf);
-        let accept_trait_gen = generate_accept_visitor_trait(&conf);
+        let visitor_trait_gen = self.generate_visitor_trait(conf);
+        let accept_trait_gen = generate_accept_visitor_trait(conf);
         let accept_trait_impls = generate_accept_visitor_impls(conf);
 
         let mut accept_impls = TokenStream::new();
@@ -45,7 +45,14 @@ impl<'ast> Generator<'ast> {
         };
 
         let items = generalize_items(&self.structs, &self.enums);
-        let function_defs = generate_functions_defs_for(items, |ident| visit_fn_ident(ident));
+        let function_defs = if conf.hierarchical {
+            let mut defs = generate_functions_defs_for(&items, |ident| enter_fn_ident(ident));
+            let leave_defs = generate_functions_defs_for(&items, |ident| leave_fn_ident(ident));
+            defs.extend(leave_defs);
+            defs
+        } else {
+            generate_functions_defs_for(&items, |ident| visit_fn_ident(ident))
+        };
 
         quote! {
             #visitor_trait_pub trait #visitor_trait_ident {
@@ -73,7 +80,7 @@ fn generalize_items<'a>(
         .collect()
 }
 
-fn generate_functions_defs_for<F>(items: Vec<GenericItem>, map_name: F) -> TokenStream
+fn generate_functions_defs_for<F>(items: &[GenericItem], map_name: F) -> TokenStream
 where
     F: Fn(&proc_macro2::Ident) -> proc_macro2::Ident,
 {
@@ -150,7 +157,6 @@ fn generate_accept_impl_for_struct(
     let generics_where_clause = &item_struct.generics.where_clause;
 
     let struct_ident = &item_struct.ident;
-    let fn_ident = visit_fn_ident(struct_ident);
 
     let field_idents: Vec<_> = match &item_struct.fields {
         syn::Fields::Named(fields_named) => fields_named
@@ -170,15 +176,32 @@ fn generate_accept_impl_for_struct(
         syn::Fields::Unit => Vec::new(),
     };
 
+    let accept_body = if conf.hierarchical {
+        let enter_ident = enter_fn_ident(struct_ident);
+        let leave_ident = leave_fn_ident(struct_ident);
+        quote! {
+            visitor.#enter_ident(self);
+            #(
+                #accept_trait_ident::accept(&self.#field_idents, visitor);
+            )*
+            visitor.#leave_ident(self);
+        }
+    } else {
+        let fn_ident = visit_fn_ident(struct_ident);
+        quote! {
+            #(
+                #accept_trait_ident::accept(&self.#field_idents, visitor);
+            )*
+            visitor.#fn_ident(self);
+        }
+    };
+
     quote! {
         impl #generics_params #accept_trait_ident for #struct_ident #generics_params
         #generics_where_clause
         {
             fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
-                #(
-                    self.#field_idents.accept(visitor);
-                )*
-                visitor.#fn_ident(self);
+                #accept_body
             }
         }
     }
@@ -191,7 +214,6 @@ fn generate_accept_impl_for_enum(
     let visitor_trait_ident = &conf.ident;
     let accept_trait_ident = conf.accept_trait_ident();
     let enum_ident = &item_enum.ident;
-    let fn_ident = visit_fn_ident(enum_ident);
     let generics_params = &item_enum.generics.params;
     let generics_params = if generics_params.is_empty() {
         quote! {}
@@ -215,7 +237,7 @@ fn generate_accept_impl_for_enum(
                 quote! {
                     #enum_ident::#variant_ident { #(#field_idents),* } => {
                         #(
-                            #field_idents_inner.accept(visitor);
+                            #accept_trait_ident::accept(#field_idents_inner, visitor);
                         )*
                     },
                 }
@@ -233,7 +255,7 @@ fn generate_accept_impl_for_enum(
                 quote! {
                     #enum_ident::#variant_ident ( #(#field_idents),* ) => {
                         #(
-                            #field_idents_inner.accept(visitor);
+                            #accept_trait_ident::accept(#field_idents_inner, visitor);
                         )*
                     }
                 }
@@ -247,15 +269,32 @@ fn generate_accept_impl_for_enum(
         match_body.extend(match_arm);
     }
 
+    let accept_body = if conf.hierarchical {
+        let enter_ident = enter_fn_ident(enum_ident);
+        let leave_ident = leave_fn_ident(enum_ident);
+        quote! {
+            visitor.#enter_ident(self);
+            match self {
+                #match_body
+            }
+            visitor.#leave_ident(self);
+        }
+    } else {
+        let fn_ident = visit_fn_ident(enum_ident);
+        quote! {
+            match self {
+                #match_body
+            }
+            visitor.#fn_ident(self);
+        }
+    };
+
     quote! {
         impl #generics_params #accept_trait_ident for #enum_ident #generics_params
         #generics_where_clause
         {
             fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
-                match self {
-                    #match_body
-                }
-                visitor.#fn_ident(self);
+                #accept_body
             }
         }
     }
@@ -277,6 +316,17 @@ fn generate_accept_visitor_impls(conf: &VisitorTraitConf) -> TokenStream {
 
     let mut stream = quote! {
         impl<TItem> #accept_trait_ident for [TItem]
+        where
+            TItem: #accept_trait_ident
+        {
+            fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
+                for item in self.iter().by_ref() {
+                    item.accept(visitor);
+                }
+            }
+        }
+
+        impl<TItem> #accept_trait_ident for &[TItem]
         where
             TItem: #accept_trait_ident
         {

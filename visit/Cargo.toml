@@ -14,7 +14,7 @@ compiletest_rs = { version = "0.3", features = ["stable"] }
 [dependencies]
 syn = { version = "0.15", features = ["full", "visit"] }
 proc-macro2 = "0.4"
-quote = "0.6"
+proc-quote = "0.2"
 case = "1.0"
 darling = "0.8"
 

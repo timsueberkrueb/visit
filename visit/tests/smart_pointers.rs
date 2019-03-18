@@ -5,6 +5,7 @@ use visit::visit;
 
 visit! {
     #![visitor(name = "Visitor")]
+    #![hierarchical_visitor(name = "HierVisitor")]
 
     struct BoxRoot {
         foo: Box<BoxFoo>,
@@ -90,6 +91,82 @@ impl Visitor for MyVisitor {
     }
 }
 
+struct MyHierVisitor {
+    visit_result: Vec<String>,
+}
+
+impl MyHierVisitor {
+    fn new() -> Self {
+        Self {
+            visit_result: Vec::new(),
+        }
+    }
+}
+
+impl HierVisitor for MyHierVisitor {
+    fn enter_box_foo(&mut self, _foo: &BoxFoo) {
+        self.visit_result.push("enter_box_foo".to_owned());
+    }
+
+    fn leave_box_foo(&mut self, _foo: &BoxFoo) {
+        self.visit_result.push("leave_box_foo".to_owned());
+    }
+
+    fn enter_rc_foo(&mut self, _foo: &RcFoo) {
+        self.visit_result.push("enter_rc_foo".to_owned());
+    }
+
+    fn leave_rc_foo(&mut self, _foo: &RcFoo) {
+        self.visit_result.push("leave_rc_foo".to_owned());
+    }
+
+    fn enter_arc_foo(&mut self, _foo: &ArcFoo) {
+        self.visit_result.push("enter_arc_foo".to_owned());
+    }
+
+    fn leave_arc_foo(&mut self, _foo: &ArcFoo) {
+        self.visit_result.push("leave_arc_foo".to_owned());
+    }
+
+    fn enter_bar(&mut self, _bar: &Bar) {
+        self.visit_result.push("enter_bar".to_owned());
+    }
+
+    fn leave_bar(&mut self, _bar: &Bar) {
+        self.visit_result.push("leave_bar".to_owned());
+    }
+
+    fn enter_nested_boxes(&mut self, nested_node: &NestedBoxes) {
+        self.visit_result
+            .push(format!("enter_{}", nested_node.name));
+    }
+
+    fn leave_nested_boxes(&mut self, nested_node: &NestedBoxes) {
+        self.visit_result
+            .push(format!("leave_{}", nested_node.name));
+    }
+
+    fn enter_nested_rcs(&mut self, nested_node: &NestedRcs) {
+        self.visit_result
+            .push(format!("enter_{}", nested_node.name));
+    }
+
+    fn leave_nested_rcs(&mut self, nested_node: &NestedRcs) {
+        self.visit_result
+            .push(format!("leave_{}", nested_node.name));
+    }
+
+    fn enter_nested_arcs(&mut self, nested_node: &NestedArcs) {
+        self.visit_result
+            .push(format!("enter_{}", nested_node.name));
+    }
+
+    fn leave_nested_arcs(&mut self, nested_node: &NestedArcs) {
+        self.visit_result
+            .push(format!("leave_{}", nested_node.name));
+    }
+}
+
 mod tests {
     use super::*;
 
@@ -102,7 +179,7 @@ mod tests {
         };
 
         let mut visitor = MyVisitor::new();
-        root.accept(&mut visitor);
+        AcceptVisitor::accept(&root, &mut visitor);
 
         assert_eq!(vec!["Bar", "BoxFoo"], visitor.visit_result);
     }
@@ -116,7 +193,7 @@ mod tests {
         };
 
         let mut visitor = MyVisitor::new();
-        root.accept(&mut visitor);
+        AcceptVisitor::accept(&root, &mut visitor);
 
         assert_eq!(vec!["Bar", "RcFoo"], visitor.visit_result);
     }
@@ -130,7 +207,7 @@ mod tests {
         };
 
         let mut visitor = MyVisitor::new();
-        root.accept(&mut visitor);
+        AcceptVisitor::accept(&root, &mut visitor);
 
         assert_eq!(vec!["Bar", "ArcFoo"], visitor.visit_result);
     }
@@ -155,9 +232,46 @@ mod tests {
         };
 
         let mut visitor = MyVisitor::new();
-        root.accept(&mut visitor);
+        AcceptVisitor::accept(&root, &mut visitor);
 
         assert_eq!(vec!["B", "C", "A", "root"], visitor.visit_result);
+    }
+
+    #[test]
+    fn test_box_nested_hierarchical() {
+        let root = NestedBoxes {
+            name: "root",
+            children: vec![Box::new(NestedBoxes {
+                name: "A",
+                children: vec![
+                    Box::new(NestedBoxes {
+                        name: "B",
+                        children: Vec::new(),
+                    }),
+                    Box::new(NestedBoxes {
+                        name: "C",
+                        children: Vec::new(),
+                    }),
+                ],
+            })],
+        };
+
+        let mut visitor = MyHierVisitor::new();
+        AcceptHierVisitor::accept(&root, &mut visitor);
+
+        assert_eq!(
+            vec![
+                "enter_root",
+                "enter_A",
+                "enter_B",
+                "leave_B",
+                "enter_C",
+                "leave_C",
+                "leave_A",
+                "leave_root",
+            ],
+            visitor.visit_result
+        );
     }
 
     #[test]
@@ -180,7 +294,7 @@ mod tests {
         };
 
         let mut visitor = MyVisitor::new();
-        root.accept(&mut visitor);
+        AcceptVisitor::accept(&root, &mut visitor);
 
         assert_eq!(vec!["B", "C", "A", "root"], visitor.visit_result);
     }
@@ -205,7 +319,7 @@ mod tests {
         };
 
         let mut visitor = MyVisitor::new();
-        root.accept(&mut visitor);
+        AcceptVisitor::accept(&root, &mut visitor);
 
         assert_eq!(vec!["B", "C", "A", "root"], visitor.visit_result);
     }
