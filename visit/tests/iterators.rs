@@ -13,10 +13,6 @@ visit! {
         bazs_set: HashSet<Baz>,
     }
 
-    struct FooArray {
-        bars_array: [Bar; 2],
-    }
-
     struct Bar {
         id: usize,
     }
@@ -54,10 +50,6 @@ impl Visitor for MyVisitor {
         self.visit_result.push("FooVec".to_owned());
     }
 
-    fn visit_foo_array(&mut self, _foo: &FooArray) {
-        self.visit_result.push("FooArray".to_owned());
-    }
-
     fn visit_bar(&mut self, bar: &Bar) {
         self.visit_result.push(format!("Bar{}", bar.id));
     }
@@ -93,16 +85,6 @@ mod tests {
         let mut v = MyVisitor::new();
         tree.accept(&mut v);
         assert_eq!(vec!["Baz", "Baz", "FooSet"], v.visit_result);
-    }
-
-    #[test]
-    fn test_array_simple() {
-        let tree = FooArray {
-            bars_array: [Bar { id: 0 }, Bar { id: 1 }],
-        };
-        let mut v = MyVisitor::new();
-        tree.accept(&mut v);
-        assert_eq!(vec!["Bar0", "Bar1", "FooArray"], v.visit_result);
     }
 
     #[test]
