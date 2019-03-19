@@ -67,6 +67,7 @@ impl HierVisitor for MyHierVisitor {
         self.visit_result.push("leave_foo");
     }
 }
+
 mod test {
     use super::*;
 

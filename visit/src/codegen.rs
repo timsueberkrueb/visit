@@ -131,14 +131,19 @@ impl<'ast, 'cgen> CodeGenerator<'ast, 'cgen> {
             #leave_code
         };
 
+        // Implement for T and &T
+        let types: [TokenStream; 2] = [quote! { #struct_ident }, quote! { & #struct_ident }];
+
         quote! {
-            impl #generics_params #accept_trait_ident for #struct_ident #generics_params
-            #generics_where_clause
-            {
-                fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
-                    #accept_body
+            #(
+                impl #generics_params #accept_trait_ident for #types #generics_params
+                #generics_where_clause
+                {
+                    fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
+                        #accept_body
+                    }
                 }
-            }
+            )*
         }
     }
 
@@ -211,14 +216,19 @@ impl<'ast, 'cgen> CodeGenerator<'ast, 'cgen> {
             #leave_code
         };
 
+        // Implement for T and &T
+        let types: [TokenStream; 2] = [quote! { #enum_ident }, quote! { & #enum_ident }];
+
         quote! {
-            impl #generics_params #accept_trait_ident for #enum_ident #generics_params
-            #generics_where_clause
-            {
-                fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
-                    #accept_body
+            #(
+                impl #generics_params #accept_trait_ident for #types #generics_params
+                #generics_where_clause
+                {
+                    fn accept<V: #visitor_trait_ident>(&self, visitor: &mut V) {
+                        #accept_body
+                    }
                 }
-            }
+            )*
         }
     }
 
