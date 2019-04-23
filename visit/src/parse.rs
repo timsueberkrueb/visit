@@ -36,7 +36,7 @@ impl FileParser {
             return Err(attr.span().error("Unexpected inner attribute"));
         }
 
-        // FIXME: Darling will get diagnostics support once it stabilizes
+        // FIXME: Use Darling's diagnostics support once it stabilizes
         // (see darling::Error::to_diagnostic)
         let mut conf =
             VisitorTraitConf::from_meta(&meta).map_err(|_| attr.span().error("Invalid syntax"))?;
