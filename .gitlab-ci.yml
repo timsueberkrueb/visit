@@ -43,7 +43,7 @@ lint:
     - rustc --version
     - cargo --version
   script:
-    - cargo clippy
+    - cargo clippy --all -- -Dwarnings
   cache:
     paths:
       - .cargo

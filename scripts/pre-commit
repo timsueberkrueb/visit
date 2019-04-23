@@ -3,5 +3,5 @@
 # from the root of the repository
 
 cargo test
-cargo clippy
+cargo clippy --all -- -Dwarnings
 cargo fmt -- --check
