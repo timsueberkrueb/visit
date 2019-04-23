@@ -118,7 +118,8 @@ impl<'ast, 'cgen> CodeGenerator<'ast, 'cgen> {
                 .unnamed
                 .iter()
                 .enumerate()
-                .map(|(i, _)| quote! { #i })
+                .map(|(i, _)| syn::Index::from(i))
+                .map(|idx| quote! { #idx })
                 .collect(),
             syn::Fields::Unit => Vec::new(),
         };
