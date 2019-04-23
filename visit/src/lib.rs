@@ -3,11 +3,13 @@
 extern crate proc_macro;
 
 use proc_quote::quote;
+use syn::visit::Visit;
 
 mod codegen;
+mod diag;
 mod parse;
 
-use syn::visit::Visit;
+use crate::diag::*;
 
 /// Procedural macro to automatically generate code for the
 /// [Visitor pattern](https://en.wikipedia.org/wiki/Visitor_pattern)
@@ -139,8 +141,19 @@ use syn::visit::Visit;
 ///
 #[proc_macro]
 pub fn visit(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let mut file: syn::File = syn::parse2(input.into()).unwrap();
-    let visitor_configs = parse::get_visitor_trait_configs(&file);
+    match try_visit(input.into()) {
+        Ok(output) | Err(output) => output.into(),
+    }
+}
+
+fn try_visit(
+    input: proc_macro2::TokenStream,
+) -> Result<proc_macro2::TokenStream, proc_macro2::TokenStream> {
+    // FIXME: This should be simplified once proc macro diagnostics stabilizes
+    let mut file: syn::File = syn::parse2(input).map_err(|err| err.to_compile_error())?;
+    let visitor_configs =
+        parse::get_visitor_trait_configs(&file).map_err(Diagnostic::to_compile_error)?;
+
     // Inner attributes are not stable yet, therefore we have to cut them out
     file.attrs = Vec::new();
 
@@ -161,5 +174,5 @@ pub fn visit(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         #result
     };
 
-    result.into()
+    Ok(result)
 }

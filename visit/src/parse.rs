@@ -1,44 +1,67 @@
 use std::collections::HashSet;
 
 use darling::FromMeta;
+use syn::spanned::Spanned;
 use syn::visit::Visit;
 
-pub fn get_visitor_trait_configs(file: &syn::File) -> Vec<VisitorTraitConf> {
-    let mut names = HashSet::with_capacity(file.attrs.len());
+use crate::diag::*;
 
-    file.attrs
-        .iter()
-        .by_ref()
-        .map(|attr| attr.parse_meta().expect("Failed to parse inner attribute"))
-        .filter(|meta| meta.name() == "visitor")
-        .map(|meta| {
-            if meta.name() == "visitor" {
-                let mut conf = VisitorTraitConf::from_meta(&meta)
-                    .unwrap_or_else(|_| panic!("Invalid synatax in `{}` attribute", meta.name()));
-                let name_string = conf.name.to_string();
-                if names.contains(&name_string) {
-                    panic!("Visitor `{}` defined more than once", name_string);
-                }
-                if let (None, None) = (&conf.leave, &conf.enter) {
-                    let default_ident =
-                        proc_macro2::Ident::new("visit", proc_macro2::Span::call_site());
-                    conf.leave = Some(default_ident);
-                }
-                if let (Some(leave), Some(enter)) = (&conf.leave, &conf.enter) {
-                    if leave == enter {
-                        panic!(
-                            "Same identifier `{}` used for both leave and enter",
-                            leave.to_string()
-                        )
-                    }
-                }
-                names.insert(name_string);
-                conf
-            } else {
-                panic!("Unexpect inner attribute `{}`", meta.name());
+pub fn get_visitor_trait_configs(file: &syn::File) -> Result<Vec<VisitorTraitConf>, Diagnostic> {
+    let mut parser = FileParser {
+        names: HashSet::with_capacity(file.attrs.len()),
+    };
+
+    parser.parse_file(file)
+}
+
+struct FileParser {
+    names: HashSet<String>,
+}
+
+impl FileParser {
+    fn parse_file(&mut self, file: &syn::File) -> Result<Vec<VisitorTraitConf>, Diagnostic> {
+        let mut confs = Vec::with_capacity(file.attrs.len());
+        for attr in file.attrs.iter().by_ref() {
+            let conf = self.parse_attribute(attr)?;
+            confs.push(conf);
+        }
+        Ok(confs)
+    }
+
+    fn parse_attribute(&mut self, attr: &syn::Attribute) -> Result<VisitorTraitConf, Diagnostic> {
+        let meta = attr
+            .parse_meta()
+            .map_err(|_| attr.span().error("Failed to parse inner attribute"))?;
+        if meta.name() != "visitor" {
+            return Err(attr.span().error("Unexpected inner attribute"));
+        }
+
+        // FIXME: Darling will get diagnostics support once it stabilizes
+        // (see darling::Error::to_diagnostic)
+        let mut conf =
+            VisitorTraitConf::from_meta(&meta).map_err(|_| attr.span().error("Invalid syntax"))?;
+
+        let name_string = conf.name.to_string();
+        if self.names.contains(&name_string) {
+            return Err(attr
+                .span()
+                .error(format!("Visitor `{}` defined more than once", name_string)));
+        }
+        if let (None, None) = (&conf.leave, &conf.enter) {
+            let default_ident = proc_macro2::Ident::new("visit", proc_macro2::Span::call_site());
+            conf.leave = Some(default_ident);
+        }
+        if let (Some(leave), Some(enter)) = (&conf.leave, &conf.enter) {
+            if leave == enter {
+                return Err(attr.span().error(format!(
+                    "Same identifier `{}` used for both leave and enter",
+                    leave.to_string()
+                )));
             }
-        })
-        .collect()
+        }
+        self.names.insert(name_string);
+        Ok(conf)
+    }
 }
 
 #[derive(Debug, FromMeta)]

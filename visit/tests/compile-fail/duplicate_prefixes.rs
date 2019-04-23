@@ -2,8 +2,8 @@ extern crate visit;
 
 use visit::visit;
 
-visit! {    //~ 5:1: 7:2: proc macro panicked
-    #![visitor(name = "Visitor", enter = "bar", leave = "bar")]
+visit! {
+    #![visitor(name = "Visitor", enter = "bar", leave = "bar")] //~ 6:5: 6:6: Same identifier `bar` used for both leave and enter
 }
 
 fn main() {
