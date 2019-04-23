@@ -1,3 +1,5 @@
+use std::string::ToString;
+
 use case::CaseExt;
 use proc_macro2::TokenStream;
 use proc_quote::quote;
@@ -59,7 +61,7 @@ impl<'ast, 'cgen> CodeGenerator<'ast, 'cgen> {
         let function_defs = enter_and_leave
             .iter()
             .filter_map(|maybe_ident| maybe_ident.as_ref())
-            .map(|ident| ident.to_string())
+            .map(ToString::to_string)
             .map(|prefix| {
                 generate_function_defs_for(&items, |ident| prefixed_fn_ident(&prefix, ident))
             });
